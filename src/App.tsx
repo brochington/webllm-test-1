@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 // import { ChatWebLLM } from '@langchain/community/chat_models/webllm';
 // import { HumanMessage } from '@langchain/core/messages';
 import * as webllm from '@mlc-ai/web-llm';
-import { createTheme, MantineProvider } from '@mantine/core';
+import { createTheme, Group, Loader, MantineProvider } from '@mantine/core';
 import { Container, Textarea, Button } from '@mantine/core';
 import Markdown from 'react-markdown';
 
@@ -40,8 +40,7 @@ type States =
 const App = () => {
   const loaded = useRef(false);
   const engine = useRef<webllm.MLCEngine | null>(null);
-  const [loadingState, setLoadingState] = useState<States>('loading-engine');
-  const [initProgress, setInitProgress] = useState<number>(0);
+  const [loadingMsg, setLoadingMsg] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string>('');
   const [markdown, setMarkdown] = useState<string>('');
 
@@ -50,6 +49,7 @@ const App = () => {
       loaded.current = true;
       const initProgressCallback = (initProgress) => {
         console.log(initProgress);
+        setLoadingMsg(initProgress.text);
       };
       const selectedModel = 'Llama-3-8B-Instruct-q4f32_1-MLC';
 
@@ -60,7 +60,7 @@ const App = () => {
 
       engine.current = _engine;
 
-      setLoadingState('idle');
+      setLoadingMsg(null);
 
       console.log(engine);
       // const model = new ChatWebLLM({
@@ -106,9 +106,9 @@ const App = () => {
     startWebLLM();
   }, []);
 
-  useEffect(() => {
-    runVectorDB();
-  }, []);
+  // useEffect(() => {
+  //   runVectorDB();
+  // }, []);
 
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setPrompt(e.target.value);
@@ -117,22 +117,38 @@ const App = () => {
   const handlSubmitPrompt = () => {
     if (!engine.current) return;
 
-    setLoadingState('loading-prompt');
-
-    const messages = [
+    const messages: webllm.ChatCompletionMessageParam[] = [
       {
         role: 'user',
         content: prompt,
       },
     ];
 
-    engine.current.chat.completions.create({ messages }).then((resp) => {
-      console.log(resp);
-      setLoadingState('ready');
-      const newMarkdown = resp.choices[0].message.content;
-      setMarkdown(newMarkdown || 'no response');
-    });
-    console.log('submitting prompt');
+    async function handleStream() {
+      const chunks = await engine.current?.chat.completions.create({
+        messages,
+        stream: true,
+      });
+
+      if (!chunks) return;
+
+      setLoadingMsg('generating response...');
+
+      let reply = '';
+
+      for await (const chunk of chunks) {
+        reply += chunk.choices[0].delta.content || '';
+        setMarkdown(reply);
+
+        if (chunk.usage) {
+          console.log(chunk.usage);
+        }
+      }
+
+      setLoadingMsg(null);
+    }
+
+    handleStream();
   };
 
   return (
@@ -148,9 +164,17 @@ const App = () => {
               placeholder="Type your message here"
               onChange={handlePromptChange}
             />
-            <div className="submit-btn-wrapper">
+            <Group className="prompt-footer" justify="space-between">
+              <Group>
+                {loadingMsg && (
+                  <>
+                    <Loader color="blue" size={20} />
+                    <div>{loadingMsg}</div>
+                  </>
+                )}
+              </Group>
               <Button onClick={handlSubmitPrompt}>Submit</Button>
-            </div>
+            </Group>
           </div>
         </div>
       </Container>

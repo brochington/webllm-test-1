@@ -26,9 +26,6 @@ body {
   height: 10rem;
 }
 
-.submit-btn-wrapper {
-  display: flex;
-  justify-content: end;
+.prompt-footer {
   margin-top: 1rem;
-
 }
